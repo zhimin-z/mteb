@@ -4,33 +4,46 @@ from mteb.abstasks.TaskMetadata import TaskMetadata
 
 from ....abstasks import AbsTaskClassification, MultilingualTask
 
-_LANGUAGES = ["en", "de", "es", "fr", "ja", "zh"]
-
 
 class AmazonReviewsClassification(MultilingualTask, AbsTaskClassification):
     metadata = TaskMetadata(
         name="AmazonReviewsClassification",
-        hf_hub_name="mteb/amazon_reviews_multi",
+        dataset={
+            "path": "mteb/amazon_reviews_multi",
+            "revision": "1399c76144fd37290681b995c656ef9b2e06e26d",
+            "trust_remote_code": True,
+        },
         description="A collection of Amazon reviews specifically designed to aid research in multilingual text classification.",
         reference="https://arxiv.org/abs/2010.02573",
         category="s2s",
         type="Classification",
         eval_splits=["validation", "test"],
-        eval_langs=_LANGUAGES,
+        eval_langs={
+            "en": ["eng-Latn"],
+            "de": ["deu-Latn"],
+            "es": ["spa-Latn"],
+            "fr": ["fra-Latn"],
+            "ja": ["jpn-Jpan"],
+            "zh": ["cmn-Hans"],
+        },
         main_score="accuracy",
-        revision="1399c76144fd37290681b995c656ef9b2e06e26d",
-        date=None,
-        form=None,
-        domains=None,
-        task_subtypes=None,
-        license=None,
-        socioeconomic_status=None,
-        annotations_creators=None,
-        dialect=None,
-        text_creation=None,
-        bibtex_citation=None,
+        date=("2015-11-01", "2019-11-01"),
+        form=["written"],
+        domains=["Reviews"],
+        task_subtypes=[],
+        license="https://docs.opendata.aws/amazon-reviews-ml/license.txt",
+        socioeconomic_status="medium",
+        annotations_creators="human-annotated",
+        dialect=[],
+        text_creation="found",
+        bibtex_citation="""@misc{keung2020multilingual,
+      title={The Multilingual Amazon Reviews Corpus}, 
+      author={Phillip Keung and Yichao Lu and György Szarvas and Noah A. Smith},
+      year={2020},
+      eprint={2010.02573},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}""",
+        n_samples={"validation": 30000, "test": 30000},
+        avg_character_length={"validation": 159.2, "test": 160.4},
     )
-
-    @property
-    def metadata_dict(self) -> dict[str, str]:
-        return dict(self.metadata)

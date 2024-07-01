@@ -4,12 +4,15 @@ import json
 import logging
 import os
 from collections import defaultdict
+from pathlib import Path
 from time import time
 from typing import Dict, Tuple
 
+import tqdm
 from datasets import Features, Value, load_dataset
 
 from ..evaluation.evaluators import RetrievalEvaluator
+from ..load_results.mteb_results import ScoresDict
 from .AbsTask import AbsTask
 
 logger = logging.getLogger(__name__)
@@ -19,10 +22,10 @@ logger = logging.getLogger(__name__)
 class HFDataLoader:
     def __init__(
         self,
-        hf_repo: str = None,
-        hf_repo_qrels: str = None,
-        data_folder: str = None,
-        prefix: str = None,
+        hf_repo: str | None = None,
+        hf_repo_qrels: str | None = None,
+        data_folder: str | None = None,
+        prefix: str | None = None,
         corpus_file: str = "corpus.jsonl",
         query_file: str = "queries.jsonl",
         qrels_folder: str = "qrels",
@@ -193,8 +196,7 @@ class HFDataLoader:
 
 
 class AbsTaskRetrieval(AbsTask):
-    """
-    Abstract class for re-ranking experiments.
+    """Abstract class for retrieval experiments.
 
     Child-classes must implement the following properties:
 
@@ -202,14 +204,17 @@ class AbsTaskRetrieval(AbsTask):
         Semantically, it should contain dict[split_name, dict[sample_id, dict[str, str]]]
         E.g. {"test": {"document_one": {"_id": "d1", "title": "title", "text": "text"}}}
 
-    self.queries: dict[str, dict[str, str]]
-        Semantically, it should contain dict[split_name, dict[sample_id, str]]
+    self.queries: dict[str, dict[str, Union[str, List[str]]]]
+        Semantically, it should contain dict[split_name, dict[sample_id, str]] or dict[split_name, dict[sample_id, List[str]]] for conversations
         E.g. {"test": {"q1": "query"}}
+        or {"test": {"q1": ["turn1", "turn2", "turn3"]}}
 
     self.relevant_docs: dict[str, dict[str, dict[str, int]]]
         Semantically, it should contain dict[split_name, dict[sample_id, dict[doc_id, score]]]
         E.g.: {"test": {"q1": {"document_one": 1}}}
     """
+
+    ignore_identical_ids: bool = False
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -218,14 +223,13 @@ class AbsTaskRetrieval(AbsTask):
         if self.data_loaded:
             return
         self.corpus, self.queries, self.relevant_docs = {}, {}, {}
+        dataset_path = self.metadata_dict["dataset"]["path"]
         hf_repo_qrels = (
-            self.metadata_dict["hf_hub_name"] + "-qrels"
-            if "clarin-knext" in self.metadata_dict["hf_hub_name"]
-            else None
+            dataset_path + "-qrels" if "clarin-knext" in dataset_path else None
         )
         for split in kwargs.get("eval_splits", self.metadata_dict["eval_splits"]):
             corpus, queries, qrels = HFDataLoader(
-                hf_repo=self.metadata_dict["hf_hub_name"],
+                hf_repo=dataset_path,
                 hf_repo_qrels=hf_repo_qrels,
                 streaming=False,
                 keep_in_memory=False,
@@ -244,34 +248,38 @@ class AbsTaskRetrieval(AbsTask):
 
         self.data_loaded = True
 
-    def evaluate(self, model, split="test", **kwargs):
-        retriever = RetrievalEvaluator(model, **kwargs)
+    def evaluate(self, model, split: str = "test", **kwargs):
+        retriever = RetrievalEvaluator(
+            retriever=model, task_name=self.metadata.name, **kwargs
+        )
 
         scores = {}
-        if self.is_multilingual:
-            for lang in self.langs:
-                logger.info(f"Language: {lang}")
+        hf_subsets = (
+            [l for l in self.hf_subsets] if self.is_multilingual else ["default"]
+        )
+
+        for hf_subset in hf_subsets:
+            logger.info(f"Subset: {hf_subset}")
+
+            if hf_subset == "default":
                 corpus, queries, relevant_docs = (
-                    self.corpus[lang][split],
-                    self.queries[lang][split],
-                    self.relevant_docs[lang][split],
+                    self.corpus[split],
+                    self.queries[split],
+                    self.relevant_docs[split],
                 )
-                scores[lang] = self._evaluate_monolingual(
-                    retriever, corpus, queries, relevant_docs, lang, **kwargs
+            else:
+                corpus, queries, relevant_docs = (
+                    self.corpus[hf_subset][split],
+                    self.queries[hf_subset][split],
+                    self.relevant_docs[hf_subset][split],
                 )
-        else:
-            corpus, queries, relevant_docs = (
-                self.corpus[split],
-                self.queries[split],
-                self.relevant_docs[split],
-            )
-            scores = self._evaluate_monolingual(
-                retriever, corpus, queries, relevant_docs, None, **kwargs
+            scores[hf_subset] = self._evaluate_subset(
+                retriever, corpus, queries, relevant_docs, hf_subset, **kwargs
             )
         return scores
 
-    def _evaluate_monolingual(
-        self, retriever, corpus, queries, relevant_docs, lang=None, **kwargs
+    def _evaluate_subset(
+        self, retriever, corpus, queries, relevant_docs, hf_subset: str, **kwargs
     ):
         start_time = time()
         results = retriever(corpus, queries)
@@ -280,10 +288,14 @@ class AbsTaskRetrieval(AbsTask):
             "Time taken to retrieve: {:.2f} seconds".format(end_time - start_time)
         )
 
-        if kwargs.get("save_qrels", False):
-            output_folder = kwargs.get("output_folder", "results")
+        save_predictions = kwargs.get("save_predictions", False)
+        export_errors = kwargs.get("export_errors", False)
+        if save_predictions or export_errors:
+            output_folder = Path(kwargs.get("output_folder", "results"))
             if not os.path.isdir(output_folder):
                 os.makedirs(output_folder)
+
+        if save_predictions:
             top_k = kwargs.get("top_k", None)
             if top_k is not None:
                 for qid in list(results.keys()):
@@ -295,25 +307,20 @@ class AbsTaskRetrieval(AbsTask):
                     results[qid] = {
                         k: v for k, v in results[qid].items() if k in doc_ids
                     }
-            if lang is None:
-                qrels_save_path = (
-                    f"{output_folder}/{self.metadata_dict['name']}_qrels.json"
-                )
-            else:
-                qrels_save_path = (
-                    f"{output_folder}/{self.metadata_dict['name']}_{lang}_qrels.json"
-                )
+            qrels_save_path = (
+                output_folder / f"{self.metadata.name}_{hf_subset}_predictions.json"
+            )
 
             with open(qrels_save_path, "w") as f:
                 json.dump(results, f)
 
-        ndcg, _map, recall, precision = retriever.evaluate(
+        ndcg, _map, recall, precision, naucs = retriever.evaluate(
             relevant_docs,
             results,
             retriever.k_values,
-            ignore_identical_ids=kwargs.get("ignore_identical_ids", True),
+            ignore_identical_ids=self.ignore_identical_ids,
         )
-        mrr = retriever.evaluate_custom(
+        mrr, naucs_mrr = retriever.evaluate_custom(
             relevant_docs, results, retriever.k_values, "mrr"
         )
         scores = {
@@ -322,5 +329,133 @@ class AbsTaskRetrieval(AbsTask):
             **{f"recall_at_{k.split('@')[1]}": v for (k, v) in recall.items()},
             **{f"precision_at_{k.split('@')[1]}": v for (k, v) in precision.items()},
             **{f"mrr_at_{k.split('@')[1]}": v for (k, v) in mrr.items()},
+            **{
+                k.replace("@", "_at_").replace("_P", "_precision").lower(): v
+                for k, v in naucs.items()
+            },
+            **{
+                k.replace("@", "_at_").replace("_P", "_precision").lower(): v
+                for k, v in naucs_mrr.items()
+            },
         }
+        self._add_main_score(scores)
+
+        if export_errors:
+            errors = {}
+
+            top_k = kwargs.get("top_k", 1)
+            if not save_predictions and top_k == 1:
+                for qid in results.keys():
+                    doc_scores = results[qid]
+                    sorted_docs = sorted(
+                        doc_scores.items(), key=lambda x: x[1], reverse=True
+                    )[:top_k]
+                    results[qid] = {doc_id: score for doc_id, score in sorted_docs}
+            for qid, retrieved_docs in results.items():
+                expected_docs = relevant_docs[qid]
+                false_positives = [
+                    doc for doc in retrieved_docs if doc not in expected_docs
+                ]
+                false_negatives = [
+                    doc for doc in expected_docs if doc not in retrieved_docs
+                ]
+                if false_positives or false_negatives:
+                    errors[qid] = {
+                        "false_positives": false_positives,
+                        "false_negatives": false_negatives,
+                    }
+
+            errors_save_path = (
+                output_folder / f"{self.metadata.name}_{hf_subset}_errors.json"
+            )
+            with open(errors_save_path, "w") as f:
+                json.dump(errors, f)
+
         return scores
+
+    def _add_main_score(self, scores: ScoresDict) -> None:
+        scores["main_score"] = scores[self.metadata.main_score]
+
+    def calculate_metadata_metrics(self) -> None:
+        self.load_data()
+
+        all_details = {}
+        pbar_split = tqdm.tqdm(
+            self.metadata_dict["eval_splits"], desc="Processing Splits..."
+        )
+        for split in pbar_split:
+            pbar_split.set_postfix_str(f"Split: {split}")
+            print(f"Processing metadata for split {split}")
+            all_details[split] = {}
+            if self.is_multilingual:
+                pbar_lang = tqdm.tqdm(
+                    self.relevant_docs.keys(), desc="Processing Languages..."
+                )
+                for lang in pbar_lang:
+                    pbar_lang.set_postfix_str(f"Language: {lang}")
+                    print(f"Processing metadata for language {lang}")
+                    split_details = process_language(
+                        self.relevant_docs[lang][split],
+                        self.queries[lang][split],
+                        self.corpus[lang][split],
+                        lang,
+                    )
+                    all_details[split][lang] = split_details
+            else:
+                split_details = process_language(
+                    self.relevant_docs[split], self.queries[split], self.corpus[split]
+                )
+                all_details[split] = split_details
+
+        return all_details
+
+
+def process_language(relevant_docs, queries, corpus, lang=None):
+    """We want to get three pieces of information:
+    - the number of documents (and their char length) in the corpus
+    - the number of queries (and their char length)
+    - the average number of relevant documents per query
+    """
+    query_len, doc_len = calculate_length(queries, corpus)
+    num_documents = len(corpus)
+    num_queries = len(queries)
+
+    # number of qrels that are not 0
+    num_qrels_non_zero = sum(
+        sum(1 for doc_id in docs if docs[doc_id] != 0)
+        for docs in relevant_docs.values()
+    )
+    qrels_per_doc = num_qrels_non_zero / num_queries if num_queries else 0
+
+    language_description = f" for language {lang}" if lang else ""
+    print(f"Average document character length{language_description} is {doc_len}")
+    print(f"Average query character length{language_description} is {query_len}")
+    print(f"Number of documents{language_description} is {num_documents}")
+    print(f"Number of queries{language_description} is {num_queries}")
+    print(
+        f"Average number of relevant documents per query{language_description} is {qrels_per_doc}"
+    )
+    return {
+        "average_document_length": doc_len,
+        "average_query_length": query_len,
+        "num_documents": num_documents,
+        "num_queries": num_queries,
+        "average_relevant_docs_per_query": qrels_per_doc,
+    }
+
+
+def calculate_length(queries, corpus):
+    queries_lens = []
+    doc_lens = []
+    for query in queries.values():
+        queries_lens.append(len(query))
+
+    for doc in corpus.values():
+        if isinstance(doc, dict):
+            doc_lens.append(len(doc.get("title", "")) + len(doc["text"]))
+        else:
+            doc_lens.append(len(doc))
+
+    doc_len = sum(doc_lens) / len(doc_lens) if doc_lens else 0
+    query_len = sum(queries_lens) / len(queries_lens) if queries_lens else 0
+    return query_len, doc_len

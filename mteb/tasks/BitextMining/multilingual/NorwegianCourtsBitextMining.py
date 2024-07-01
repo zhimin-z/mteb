@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import datasets
-
 from mteb.abstasks import AbsTaskBitextMining
 from mteb.abstasks.TaskMetadata import TaskMetadata
 
@@ -9,44 +7,37 @@ from mteb.abstasks.TaskMetadata import TaskMetadata
 class NorwegianCourtsBitextMining(AbsTaskBitextMining):
     metadata = TaskMetadata(
         name="NorwegianCourtsBitextMining",
-        hf_hub_name="kardosdrur/norwegian-courts",
+        dataset={
+            "path": "kardosdrur/norwegian-courts",
+            "revision": "d79af07e969a6678fcbbe819956840425816468f",
+        },
         description="Nynorsk and Bokmål parallel corpus from Norwegian courts. Norwegian courts have two standardised written languages. Bokmål is a variant closer to Danish, while Nynorsk was created to resemble regional dialects of Norwegian.",
         reference="https://opus.nlpl.eu/index.php",
         type="BitextMining",
         category="s2s",
         eval_splits=["test"],
-        eval_langs=["nb", "nn"],
+        eval_langs=["nob-Latn", "nno-Latn"],
         main_score="f1",
-        revision="d79af07e969a6678fcbbe819956840425816468f",
-        date=None,
-        form=None,
-        domains=None,
-        task_subtypes=None,
-        license=None,
-        socioeconomic_status=None,
-        annotations_creators=None,
-        dialect=None,
-        text_creation=None,
-        bibtex_citation=None,
+        date=("2020-01-01", "2020-12-31"),
+        form=["written"],
+        domains=["Legal"],
+        task_subtypes=[],
+        license="CC BY 4.0",
+        socioeconomic_status="mixed",
+        annotations_creators="human-annotated",
+        dialect=[],
+        text_creation="found",
+        bibtex_citation="""
+@inproceedings{opus4,
+  title={OPUS-MT — Building open translation services for the World},
+  author={Tiedemann, J{\"o}rg and Thottingal, Santhosh},
+  booktitle={Proceedings of the 22nd Annual Conference of the European Association for Machine Translation (EAMT)},
+  year={2020}
+}
+""",
+        n_samples={"test": 2050},
+        avg_character_length={"test": 1884.0},
     )
-
-    @property
-    def metadata_dict(self) -> dict[str, str]:
-        return dict(self.metadata)
-
-    def load_data(self, **kwargs):
-        """
-        Load dataset from HuggingFace hub and convert it to the standard format.
-        """
-        if self.data_loaded:
-            return
-
-        self.dataset = datasets.load_dataset(
-            self.metadata_dict["hf_hub_name"],
-            revision=self.metadata_dict.get("revision", None),
-        )
-        self.dataset_transform()
-        self.data_loaded = True
 
     def dataset_transform(self):
         # Convert to standard format

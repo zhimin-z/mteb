@@ -1,222 +1,72 @@
 from __future__ import annotations
 
-import datasets
-
-from mteb.abstasks import AbsTaskClassification
+from mteb.abstasks import AbsTaskClassification, MultilingualTask
 from mteb.abstasks.TaskMetadata import TaskMetadata
 
+_LANGS = {
+    "Danish": ["dan-Latn"],
+    "Norwegian_b": ["nob-Latn"],
+    "Norwegian_n": ["nno-Latn"],
+    "Swedish": ["swe-Latn"],
+}
 
-class ScalaDaClassification(AbsTaskClassification):
+
+class ScalaClassification(AbsTaskClassification, MultilingualTask):
     metadata = TaskMetadata(
-        name="ScalaDaClassification",
-        description="A modified version of DDT modified for linguistic acceptability classification",
+        name="ScalaClassification",
+        description="""ScaLa a linguistic acceptability dataset for the mainland Scandinavian languages automatically constructed from dependency annotations in Universal Dependencies Treebanks. 
+        Published as part of 'ScandEval: A Benchmark for Scandinavian Natural Language Processing'""",
         reference="https://aclanthology.org/2023.nodalida-1.20/",
-        hf_hub_name="ScandEval/scala-da",
+        dataset={
+            "path": "mteb/multilingual-scala-classification",
+            "revision": "ec85bb6c69679ed15ac66c0bf6e180bf563eb137",
+        },
         type="Classification",
         category="s2s",
         eval_splits=["test"],
-        eval_langs=["da"],
+        eval_langs=_LANGS,
         main_score="accuracy",
-        revision="1de08520a7b361e92ffa2a2201ebd41942c54675",
-        date=None,
-        form=None,
-        domains=None,
-        task_subtypes=None,
-        license=None,
-        socioeconomic_status=None,
-        annotations_creators=None,
-        dialect=None,
-        text_creation=None,
-        bibtex_citation=None,
+        date=(
+            "1990-01-01",
+            "2023-01-01",
+        ),  # derived from dependency treebank, this a the best guess
+        form=["written"],
+        domains=["Fiction", "News", "Non-fiction", "Blog", "Spoken", "Web"],
+        task_subtypes=["Linguistic acceptability"],
+        license="CC BY-SA 4.0",
+        socioeconomic_status="mixed",
+        annotations_creators="human-annotated",
+        dialect=[],
+        text_creation="created",
+        bibtex_citation="""@inproceedings{nielsen-2023-scandeval,
+            title = "{S}cand{E}val: A Benchmark for {S}candinavian Natural Language Processing",
+            author = "Nielsen, Dan",
+            editor = {Alum{\"a}e, Tanel  and
+            Fishel, Mark},
+            booktitle = "Proceedings of the 24th Nordic Conference on Computational Linguistics (NoDaLiDa)",
+            month = may,
+            year = "2023",
+            address = "T{\'o}rshavn, Faroe Islands",
+            publisher = "University of Tartu Library",
+            url = "https://aclanthology.org/2023.nodalida-1.20",
+            pages = "185--201",
+        }""",
+        n_samples={"test": len(_LANGS) * 1024},
+        avg_character_length={"test": 102.72},
     )
 
     @property
     def metadata_dict(self) -> dict[str, str]:
-        metadata_dict = dict(self.metadata)
+        metadata_dict = super().metadata_dict
         metadata_dict["n_experiments"] = 10
         metadata_dict["samples_per_label"] = 32
         return metadata_dict
 
-    def load_data(self, **kwargs):
-        """
-        Load dataset from HuggingFace hub
-        """
-        if self.data_loaded:
-            return
-
-        self.dataset = datasets.load_dataset(
-            self.metadata_dict["hf_hub_name"],
-            revision=self.metadata_dict.get("revision", None),
-        )
-        self.dataset_transform()
-        self.data_loaded = True
-
     def dataset_transform(self):
-        # convert label to a 0/1 label
-        labels = self.dataset["train"]["label"]  # type: ignore
-        lab2idx = {lab: idx for idx, lab in enumerate(set(labels))}
-        self.dataset = self.dataset.map(
-            lambda x: {"label": lab2idx[x["label"]]}, remove_columns=["label"]
-        )
-
-
-class ScalaNbClassification(AbsTaskClassification):
-    metadata = TaskMetadata(
-        name="ScalaNbClassification",
-        description="A Norwegian dataset for linguistic acceptability classification for Bokmål",
-        reference="https://aclanthology.org/2023.nodalida-1.20/",
-        hf_hub_name="ScandEval/scala-nb",
-        type="Classification",
-        category="s2s",
-        eval_splits=["test"],
-        eval_langs=["nb"],
-        main_score="accuracy",
-        revision="237111a078ad5a834a55c57803d40bbe410ed03b",
-        date=None,
-        form=None,
-        domains=None,
-        task_subtypes=None,
-        license=None,
-        socioeconomic_status=None,
-        annotations_creators=None,
-        dialect=None,
-        text_creation=None,
-        bibtex_citation=None,
-    )
-
-    @property
-    def metadata_dict(self) -> dict[str, str]:
-        metadata_dict = dict(self.metadata)
-        metadata_dict["n_experiments"] = 10
-        metadata_dict["samples_per_label"] = 32
-        return dict(self.metadata)
-
-    def load_data(self, **kwargs):
-        """
-        Load dataset from HuggingFace hub
-        """
-        if self.data_loaded:
-            return
-
-        self.dataset = datasets.load_dataset(
-            self.metadata_dict["hf_hub_name"],
-            revision=self.metadata_dict.get("revision", None),
-        )
-        self.dataset_transform()
-        self.data_loaded = True
-
-    def dataset_transform(self):
-        # convert label to a 0/1 label
-        labels = self.dataset["train"]["label"]  # type: ignore
-        lab2idx = {lab: idx for idx, lab in enumerate(set(labels))}
-        self.dataset = self.dataset.map(
-            lambda x: {"label": lab2idx[x["label"]]}, remove_columns=["label"]
-        )
-
-
-class ScalaNnClassification(AbsTaskClassification):
-    metadata = TaskMetadata(
-        name="ScalaNnClassification",
-        description="A Norwegian dataset for linguistic acceptability classification for Nynorsk",
-        reference="https://aclanthology.org/2023.nodalida-1.20/",
-        hf_hub_name="ScandEval/scala-nn",
-        type="Classification",
-        category="s2s",
-        eval_splits=["test"],
-        eval_langs=["nn"],
-        main_score="accuracy",
-        revision="9d9a2a4092ed3cacf0744592f6d2f32ab8ef4c0b",
-        date=None,
-        form=None,
-        domains=None,
-        task_subtypes=None,
-        license=None,
-        socioeconomic_status=None,
-        annotations_creators=None,
-        dialect=None,
-        text_creation=None,
-        bibtex_citation=None,
-    )
-
-    @property
-    def metadata_dict(self) -> dict[str, str]:
-        metadata_dict = dict(self.metadata)
-        metadata_dict["n_experiments"] = 10
-        metadata_dict["samples_per_label"] = 32
-        return metadata_dict
-
-    def load_data(self, **kwargs):
-        """
-        Load dataset from HuggingFace hub
-        """
-        if self.data_loaded:
-            return
-
-        self.dataset = datasets.load_dataset(
-            self.metadata_dict["hf_hub_name"],
-            revision=self.metadata_dict.get("revision", None),
-        )
-        self.dataset_transform()
-        self.data_loaded = True
-
-    def dataset_transform(self):
-        # convert label to a 0/1 label
-        labels = self.dataset["train"]["label"]  # type: ignore
-        lab2idx = {lab: idx for idx, lab in enumerate(set(labels))}
-        self.dataset = self.dataset.map(
-            lambda x: {"label": lab2idx[x["label"]]}, remove_columns=["label"]
-        )
-
-
-class ScalaSvClassification(AbsTaskClassification):
-    metadata = TaskMetadata(
-        name="ScalaSvClassification",
-        description="A Swedish dataset for linguistic acceptability classification",
-        reference="https://aclanthology.org/2023.nodalida-1.20/",
-        hf_hub_name="ScandEval/scala-sv",
-        type="Classification",
-        category="s2s",
-        eval_splits=["test"],
-        eval_langs=["sv"],
-        main_score="accuracy",
-        revision="1b48e3dcb02872335ff985ff938a054a4ed99008",
-        date=None,
-        form=None,
-        domains=None,
-        task_subtypes=None,
-        license=None,
-        socioeconomic_status=None,
-        annotations_creators=None,
-        dialect=None,
-        text_creation=None,
-        bibtex_citation=None,
-    )
-
-    @property
-    def metadata_dict(self) -> dict[str, str]:
-        metadata_dict = dict(self.metadata)
-        metadata_dict["n_experiments"] = 10
-        metadata_dict["samples_per_label"] = 32
-        return metadata_dict
-
-    def load_data(self, **kwargs):
-        """
-        Load dataset from HuggingFace hub
-        """
-        if self.data_loaded:
-            return
-
-        self.dataset = datasets.load_dataset(
-            self.metadata_dict["hf_hub_name"],
-            revision=self.metadata_dict.get("revision", None),
-        )
-        self.dataset_transform()
-        self.data_loaded = True
-
-    def dataset_transform(self):
-        # convert label to a 0/1 label
-        labels = self.dataset["train"]["label"]  # type: ignore
-        lab2idx = {lab: idx for idx, lab in enumerate(set(labels))}
-        self.dataset = self.dataset.map(
-            lambda x: {"label": lab2idx[x["label"]]}, remove_columns=["label"]
-        )
+        for lang in self.dataset.keys():
+            # convert label to a 0/1 label
+            labels = self.dataset[lang]["train"]["label"]  # type: ignore
+            lab2idx = {lab: idx for idx, lab in enumerate(set(labels))}
+            self.dataset[lang] = self.dataset[lang].map(
+                lambda x: {"label": lab2idx[x["label"]]}, remove_columns=["label"]
+            )

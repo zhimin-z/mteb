@@ -8,7 +8,16 @@ from ....abstasks import MultilingualTask
 from ....abstasks.AbsTaskRetrieval import AbsTaskRetrieval
 
 _EVAL_SPLIT = "test"
-_LANGS = ["ar", "de", "es", "fr", "hi", "it", "ja", "pt"]
+_LANGS = {
+    "ar": ["ara-Arab"],
+    "de": ["deu-Latn"],
+    "es": ["spa-Latn"],
+    "fr": ["fra-Latn"],
+    "hi": ["hin-Deva"],
+    "it": ["ita-Latn"],
+    "ja": ["jpn-Hira"],
+    "pt": ["por-Latn"],
+}
 
 
 def _load_mintaka_data(
@@ -54,13 +63,16 @@ class MintakaRetrieval(MultilingualTask, AbsTaskRetrieval):
         name="MintakaRetrieval",
         description="MintakaRetrieval",
         reference=None,
-        hf_hub_name="jinaai/mintakaqa",
+        dataset={
+            "path": "jinaai/mintakaqa",
+            "revision": "efa78cc2f74bbcd21eff2261f9e13aebe40b814e",
+            "trust_remote_code": True,
+        },
         type="Retrieval",
         category="s2p",
         eval_splits=[_EVAL_SPLIT],
         eval_langs=_LANGS,
         main_score="ndcg_at_10",
-        revision="efa78cc2f74bbcd21eff2261f9e13aebe40b814e",
         date=None,
         form=None,
         domains=None,
@@ -70,23 +82,92 @@ class MintakaRetrieval(MultilingualTask, AbsTaskRetrieval):
         annotations_creators=None,
         dialect=None,
         text_creation=None,
-        bibtex_citation=None,
+        bibtex_citation="""@inproceedings{sen-etal-2022-mintaka,
+    title = "Mintaka: A Complex, Natural, and Multilingual Dataset for End-to-End Question Answering",
+    author = "Sen, Priyanka  and
+      Aji, Alham Fikri  and
+      Saffari, Amir",
+    booktitle = "Proceedings of the 29th International Conference on Computational Linguistics",
+    month = oct,
+    year = "2022",
+    address = "Gyeongju, Republic of Korea",
+    publisher = "International Committee on Computational Linguistics",
+    url = "https://aclanthology.org/2022.coling-1.138",
+    pages = "1604--1619"
+}""",
+        n_samples=None,
+        avg_character_length={
+            "test": {
+                "ar": {
+                    "average_document_length": 12.736418511066399,
+                    "average_query_length": 55.275533363595095,
+                    "num_documents": 1491,
+                    "num_queries": 2203,
+                    "average_relevant_docs_per_query": 1.0,
+                },
+                "de": {
+                    "average_document_length": 14.40060422960725,
+                    "average_query_length": 65.41322662173546,
+                    "num_documents": 1655,
+                    "num_queries": 2374,
+                    "average_relevant_docs_per_query": 1.0,
+                },
+                "es": {
+                    "average_document_length": 14.291789722386296,
+                    "average_query_length": 64.88325082508251,
+                    "num_documents": 1693,
+                    "num_queries": 2424,
+                    "average_relevant_docs_per_query": 1.0,
+                },
+                "fr": {
+                    "average_document_length": 14.407234539089849,
+                    "average_query_length": 68.88452088452088,
+                    "num_documents": 1714,
+                    "num_queries": 2442,
+                    "average_relevant_docs_per_query": 1.0,
+                },
+                "hi": {
+                    "average_document_length": 12.71038961038961,
+                    "average_query_length": 58.404637247569184,
+                    "num_documents": 770,
+                    "num_queries": 1337,
+                    "average_relevant_docs_per_query": 1.0,
+                },
+                "it": {
+                    "average_document_length": 14.365985576923077,
+                    "average_query_length": 64.39707724425887,
+                    "num_documents": 1664,
+                    "num_queries": 2395,
+                    "average_relevant_docs_per_query": 1.0004175365344468,
+                },
+                "ja": {
+                    "average_document_length": 9.167713567839195,
+                    "average_query_length": 29.961937716262977,
+                    "num_documents": 1592,
+                    "num_queries": 2312,
+                    "average_relevant_docs_per_query": 1.0,
+                },
+                "pt": {
+                    "average_document_length": 14.244471744471744,
+                    "average_query_length": 60.42225998300765,
+                    "num_documents": 1628,
+                    "num_queries": 2354,
+                    "average_relevant_docs_per_query": 1.0004248088360237,
+                },
+            }
+        },
     )
-
-    @property
-    def metadata_dict(self) -> dict[str, str]:
-        return dict(self.metadata)
 
     def load_data(self, **kwargs):
         if self.data_loaded:
             return
 
         self.corpus, self.queries, self.relevant_docs = _load_mintaka_data(
-            path=self.metadata_dict["hf_hub_name"],
+            path=self.metadata_dict["dataset"]["path"],
             langs=self.metadata.eval_langs,
             split=self.metadata_dict["eval_splits"][0],
             cache_dir=kwargs.get("cache_dir", None),
-            revision=self.metadata_dict["revision"],
+            revision=self.metadata_dict["dataset"]["revision"],
         )
 
         self.data_loaded = True

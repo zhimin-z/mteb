@@ -1,19 +1,33 @@
 from __future__ import annotations
 
-import datasets
-
 from mteb.abstasks.TaskMetadata import TaskMetadata
 
 from ....abstasks import AbsTaskSTS, MultilingualTask
 
-_LANGUAGES = ["en", "de", "es", "fr", "it", "nl", "pl", "pt", "ru", "zh"]
+_LANGUAGES = {
+    "en": ["eng-Latn"],
+    "de": ["deu-Latn"],
+    "es": ["spa-Latn"],
+    "fr": ["fra-Latn"],
+    "it": ["ita-Latn"],
+    "nl": ["nld-Latn"],
+    "pl": ["pol-Latn"],
+    "pt": ["por-Latn"],
+    "ru": ["rus-Cyrl"],
+    "zh": ["cmn-Hans"],
+}
+
 _SPLITS = ["dev", "test"]
 
 
 class STSBenchmarkMultilingualSTS(AbsTaskSTS, MultilingualTask):
+    fast_loading = True
     metadata = TaskMetadata(
         name="STSBenchmarkMultilingualSTS",
-        hf_hub_name="stsb_multi_mt",
+        dataset={
+            "path": "mteb/stsb_multi_mt",
+            "revision": "29afa2569dcedaaa2fe6a3dcfebab33d28b82e8c",
+        },
         description=(
             "Semantic Textual Similarity Benchmark (STSbenchmark) dataset,"
             "but translated using DeepL API."
@@ -24,58 +38,32 @@ class STSBenchmarkMultilingualSTS(AbsTaskSTS, MultilingualTask):
         eval_splits=_SPLITS,
         eval_langs=_LANGUAGES,
         main_score="cosine_spearman",
-        revision="93d57ef91790589e3ce9c365164337a8a78b7632",
-        date=None,
-        form=None,
-        domains=None,
-        task_subtypes=None,
-        license=None,
-        socioeconomic_status=None,
-        annotations_creators=None,
-        dialect=None,
-        text_creation=None,
-        bibtex_citation=None,
+        date=("2012-01-01", "2017-12-31"),
+        form=["spoken", "written"],
+        domains=["News", "Social", "Web"],
+        task_subtypes=[],
+        license="Not specified",
+        socioeconomic_status="mixed",
+        annotations_creators="human-annotated",
+        dialect=[],
+        text_creation="machine-translated",
+        bibtex_citation="""@InProceedings{huggingface:dataset:stsb_multi_mt,
+        title = {Machine translated multilingual STS benchmark dataset.},
+        author={Philip May},
+        year={2021},
+        url={https://github.com/PhilipMay/stsb-multi-mt}
+        }""",
+        n_samples={"dev": 30000, "test": 27580},
+        avg_character_length={"dev": 66.5, "test": 56.1},
     )
 
     @property
     def metadata_dict(self) -> dict[str, str]:
-        metadata_dict = dict(self.metadata)
+        metadata_dict = super().metadata_dict
         metadata_dict["min_score"] = 0
         metadata_dict["max_score"] = 5
         return metadata_dict
 
-    def load_data(self, **kwargs):
-        if self.data_loaded:
-            return
-
-        def get_dataset_subset(lang: str):
-            """For a specified subset (=language)
-            only get the splits listed in _SPLIT
-            and rename column "score"
-
-            Args:
-                lang (str): _description_
-
-            Returns:
-                datasets.DatasetDict: the dataset of the specified language
-            """
-            subset = datasets.DatasetDict(
-                **dict(
-                    zip(
-                        _SPLITS,
-                        datasets.load_dataset(
-                            self.metadata_dict["hf_hub_name"],
-                            lang,
-                            split=_SPLITS,
-                            revision=self.metadata_dict.get("revision", None),
-                        ),
-                    )
-                )
-            )
-            return subset.rename_column("similarity_score", "score")
-
-        self.dataset = datasets.DatasetDict(
-            **dict(zip(self.langs, [get_dataset_subset(lang) for lang in self.langs]))
-        )
-
-        self.data_loaded = True
+    def dataset_transform(self) -> None:
+        for lang, subset in self.dataset.items():
+            self.dataset[lang] = subset.rename_column("similarity_score", "score")

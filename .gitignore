@@ -136,3 +136,8 @@ error_logs.txt
 
 # tests
 tests/results
+tmp.py
+
+# sandbox
+sb.ipynb
+tests/create_meta/model_card.md

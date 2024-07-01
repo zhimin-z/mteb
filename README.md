@@ -19,9 +19,9 @@
     <p>
         <a href="#installation">Installation</a> |
         <a href="#usage">Usage</a> |
-        <a href="#leaderboard">Leaderboard</a> |
-        <a href="#citing">Citing</a> |
-        <a href="#available-tasks">Tasks</a>
+        <a href="https://huggingface.co/spaces/mteb/leaderboard">Leaderboard</a> |
+        <a href="#documentation">Documentation</a> |
+        <a href="#citing">Citing</a>
     <p>
 </h4>
 
@@ -41,23 +41,26 @@ pip install mteb
 * Using a python script (see [scripts/run_mteb_english.py](https://github.com/embeddings-benchmark/mteb/blob/main/scripts/run_mteb_english.py) and [mteb/mtebscripts](https://github.com/embeddings-benchmark/mtebscripts) for more):
 
 ```python
-from mteb import MTEB
+import mteb
 from sentence_transformers import SentenceTransformer
 
 # Define the sentence-transformers model name
 model_name = "average_word_embeddings_komninos"
+# or directly from huggingface:
+# model_name = "sentence-transformers/all-MiniLM-L6-v2"
 
 model = SentenceTransformer(model_name)
-evaluation = MTEB(tasks=["Banking77Classification"])
+tasks = mteb.get_tasks(tasks=["Banking77Classification"])
+evaluation = mteb.MTEB(tasks=tasks)
 results = evaluation.run(model, output_folder=f"results/{model_name}")
 ```
 
 * Using CLI
 
 ```bash
-mteb --available_tasks
+mteb available_tasks
 
-mteb -m sentence-transformers/all-MiniLM-L6-v2 \
+mteb run -m sentence-transformers/all-MiniLM-L6-v2 \
     -t Banking77Classification  \
     --verbosity 3
 
@@ -82,37 +85,46 @@ Datasets can be selected by providing the list of datasets, but also
 * by their task (e.g. "Clustering" or "Classification")
 
 ```python
-evaluation = MTEB(task_types=['Clustering', 'Retrieval']) # Only select clustering and retrieval tasks
+tasks = mteb.get_tasks(task_types=["Clustering", "Retrieval"]) # Only select clustering and retrieval tasks
 ```
 
-* by their categories e.g. "S2S" (sentence to sentence) or "P2P" (paragraph to paragraph)
+* by their categories e.g. "s2s" (sentence to sentence) or "p2p" (paragraph to paragraph)
 
 ```python
-evaluation = MTEB(task_categories=['S2S']) # Only select sentence2sentence datasets
+tasks = mteb.get_tasks(categories=["s2s", "p2p"]) # Only select sentence2sentence and paragraph2paragraph datasets
 ```
 
 * by their languages
 
 ```python
-evaluation = MTEB(task_langs=["en", "de"]) # Only select datasets which are "en", "de" or "en-de"
+tasks = mteb.get_tasks(languages=["eng", "deu"]) # Only select datasets which contain "eng" or "deu" (iso 639-3 codes)
 ```
 
-You can also specify which languages to load for multilingual/crosslingual tasks like below:
+You can also specify which languages to load for multilingual/cross-lingual tasks like below:
 
 ```python
+import mteb
+
+tasks = [
+    mteb.get_task("AmazonReviewsClassification", languages = ["eng", "fra"]),
+    mteb.get_task("BUCCBitextMining", languages = ["deu"]), # all subsets containing "deu"
+]
+
+# or you can select specific huggingface subsets like this:
 from mteb.tasks import AmazonReviewsClassification, BUCCBitextMining
 
-evaluation = MTEB(tasks=[
-        AmazonReviewsClassification(langs=["en", "fr"]) # Only load "en" and "fr" subsets of Amazon Reviews
-        BUCCBitextMining(langs=["de-en"]), # Only load "de-en" subset of BUCC
+evaluation = mteb.MTEB(tasks=[
+        AmazonReviewsClassification(hf_subsets=["en", "fr"]) # Only load "en" and "fr" subsets of Amazon Reviews
+        BUCCBitextMining(hf_subsets=["de-en"]), # Only load "de-en" subset of BUCC
 ])
+# for an example of a HF subset see "Subset" in the dataset viewer at: https://huggingface.co/datasets/mteb/bucc-bitext-mining
 ```
 
 There are also presets available for certain task collections, e.g. to select the 56 English datasets that form the "Overall MTEB English leaderboard":
 
 ```python
 from mteb import MTEB_MAIN_EN
-evaluation = MTEB(tasks=MTEB_MAIN_EN, task_langs=["en"])
+evaluation = mteb.MTEB(tasks=MTEB_MAIN_EN, task_langs=["en"])
 ```
 
 
@@ -131,20 +143,23 @@ Models should implement the following interface, implementing an `encode` functi
 
 ```python
 class MyModel():
-    def encode(self, sentences, batch_size=32, **kwargs):
-        """
-        Returns a list of embeddings for the given sentences.
+    def encode(
+        self, sentences: list[str], **kwargs: Any
+    ) -> torch.Tensor | np.ndarray:
+        """Encodes the given sentences using the encoder.
+
         Args:
-            sentences (`List[str]`): List of sentences to encode
-            batch_size (`int`): Batch size for the encoding
+            sentences: The sentences to encode.
+            **kwargs: Additional arguments to pass to the encoder.
 
         Returns:
-            `List[np.ndarray]` or `List[tensor]`: List of embeddings for the given sentences
+            The encoded sentences.
         """
         pass
 
 model = MyModel()
-evaluation = MTEB(tasks=["Banking77Classification"])
+tasks = mteb.get_task("Banking77Classification")
+evaluation = MTEB(tasks=tasks)
 evaluation.run(model)
 ```
 
@@ -152,35 +167,33 @@ If you'd like to use different encoding functions for query and corpus when eval
 
 ```python
 class MyModel():
-    def encode_queries(self, queries, batch_size=32, **kwargs):
+    def encode_queries(self, queries: list[str], **kwargs) -> list[np.ndarray] | list[torch.Tensor]:
         """
         Returns a list of embeddings for the given sentences.
         Args:
-            queries (`List[str]`): List of sentences to encode
-            batch_size (`int`): Batch size for the encoding
+            queries: List of sentences to encode
 
         Returns:
-            `List[np.ndarray]` or `List[tensor]`: List of embeddings for the given sentences
+            List of embeddings for the given sentences
         """
         pass
 
-    def encode_corpus(self, corpus, batch_size=32, **kwargs):
+    def encode_corpus(self, corpus: list[str] | list[dict[str, str]], **kwargs) -> list[np.ndarray] | list[torch.Tensor]:
         """
         Returns a list of embeddings for the given sentences.
         Args:
-            corpus (`List[str]` or `List[Dict[str, str]]`): List of sentences to encode
+            corpus: List of sentences to encode
                 or list of dictionaries with keys "title" and "text"
-            batch_size (`int`): Batch size for the encoding
 
         Returns:
-            `List[np.ndarray]` or `List[tensor]`: List of embeddings for the given sentences
+            List of embeddings for the given sentences
         """
         pass
 ```
 
-### Evaluating on a custom task
+### Evaluating on a custom dataset
 
-To add a new task, you need to implement a new class that inherits from the `AbsTask` associated with the task type (e.g. `AbsTaskReranking` for reranking tasks). You can find the supported task types in [here](https://github.com/embeddings-benchmark/mteb-draft/tree/main/mteb/abstasks).
+To evaluate on a custom task, you can run the following code on your custom task. See [how to add a new task](docs/adding_a_dataset.md), for how to create a new task in MTEB.
 
 ```python
 from mteb import MTEB
@@ -188,27 +201,13 @@ from mteb.abstasks.AbsTaskReranking import AbsTaskReranking
 from sentence_transformers import SentenceTransformer
 
 
-class MindSmallReranking(AbsTaskReranking):
-    @property
-    def description(self):
-        return {
-            "name": "MindSmallReranking",
-            "hf_hub_name": "mteb/mind_small",
-            "description": "Microsoft News Dataset: A Large-Scale English Dataset for News Recommendation Research",
-            "reference": "https://www.microsoft.com/en-us/research/uploads/prod/2019/03/nl4se18LinkSO.pdf",
-            "type": "Reranking",
-            "category": "s2s",
-            "eval_splits": ["validation"],
-            "eval_langs": ["en"],
-            "main_score": "map",
-        }
+class MyCustomTask(AbsTaskReranking):
+    ...
 
 model = SentenceTransformer("average_word_embeddings_komninos")
-evaluation = MTEB(tasks=[MindSmallReranking()])
+evaluation = MTEB(tasks=[MyCustomTask()])
 evaluation.run(model)
 ```
-
-> **Note:** for multilingual tasks, make sure your class also inherits from the `MultilingualTask` class like in [this](https://github.com/embeddings-benchmark/mteb-draft/blob/main/mteb/tasks/Classification/MTOPIntentClassification.py) example.
 
 </details>
 
@@ -216,17 +215,25 @@ evaluation.run(model)
 
 ## Documentation
 
-| Documentation                          |                        |
+| Documentation                  |                        |
 | ------------------------------ | ---------------------- |
 | 📋 [Tasks] | Overview of available tasks |
 | 📈 [Leaderboard] | The interactive leaderboard of the benchmark |
 | 🤖 [Adding a model] | Information related to how to submit a model to the leaderboard |
-| 🤝  [Contributing] | How to contribute to MTEB and set it up for development |
+| 👩‍🔬 [Reproducible workflows] | Information related to how to reproduce and create reproducible workflows with MTEB |
+| 👩‍💻 [Adding a dataset] | How to add a new task/dataset to MTEB | 
+| 👩‍💻 [Adding a leaderboard tab] | How to add a new leaderboard tab to MTEB | 
+| 🤝 [Contributing] | How to contribute to MTEB and set it up for development |
+| 🌐 [MMTEB] | An open-source effort to extend MTEB to cover a broad set of languages |  
 
 [Tasks]: docs/tasks.md
-[Contributing]: docs/contributing.md
+[Contributing]: CONTRIBUTING.md
 [Adding a model]: docs/adding_a_model.md
+[Adding a dataset]: docs/adding_a_dataset.md
+[Adding a leaderboard tab]: docs/adding_a_leaderboard_tab.md
 [Leaderboard]: https://huggingface.co/spaces/mteb/leaderboard
+[MMTEB]: docs/mmteb/readme.md
+[Reproducible workflows]: docs/reproducible_workflow.md
 
 ## Citing
 
@@ -248,5 +255,8 @@ You may also want to read and cite the amazing work that has extended MTEB & int
 - Shitao Xiao, Zheng Liu, Peitian Zhang, Niklas Muennighoff. "[C-Pack: Packaged Resources To Advance General Chinese Embedding](https://arxiv.org/abs/2309.07597)" arXiv 2023
 - Michael Günther, Jackmin Ong, Isabelle Mohr, Alaeddine Abdessalem, Tanguy Abel, Mohammad Kalim Akram, Susana Guzman, Georgios Mastrapas, Saba Sturua, Bo Wang, Maximilian Werk, Nan Wang, Han Xiao. "[Jina Embeddings 2: 8192-Token General-Purpose Text Embeddings for Long Documents](https://arxiv.org/abs/2310.19923)" arXiv 2023
 - Silvan Wehrli, Bert Arnrich, Christopher Irrgang. "[German Text Embedding Clustering Benchmark](https://arxiv.org/abs/2401.02709)" arXiv 2024
+- Orion Weller, Benjamin Chang, Sean MacAvaney, Kyle Lo, Arman Cohan, Benjamin Van Durme, Dawn Lawrie, Luca Soldaini. "[FollowIR: Evaluating and Teaching Information Retrieval Models to Follow Instructions](https://arxiv.org/abs/2403.15246)" arXiv 2024
+- Dawei Zhu, Liang Wang, Nan Yang, Yifan Song, Wenhao Wu, Furu Wei, Sujian Li. "[LongEmbed: Extending Embedding Models for Long Context Retrieval](https://arxiv.org/abs/2404.12096)" arXiv 2024
+- Kenneth Enevoldsen, Márton Kardos, Niklas Muennighoff, Kristoffer Laigaard Nielbo. "[The Scandinavian Embedding Benchmarks: Comprehensive Assessment of Multilingual and Monolingual Text Embedding](https://arxiv.org/abs/2406.02396)" arXiv 2024
 
 For works that have used MTEB for benchmarking, you can find them on the [leaderboard](https://huggingface.co/spaces/mteb/leaderboard).

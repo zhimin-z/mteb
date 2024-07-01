@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from typing import Any
+
 import datasets
 
 from mteb.abstasks.TaskMetadata import TaskMetadata
 
-from ....abstasks import AbsTaskBitextMining, CrosslingualTask
+from ....abstasks import AbsTaskBitextMining, MultilingualTask
 
 _LANGUAGES = [
     "ace_Arab",
@@ -212,79 +214,68 @@ _LANGUAGES = [
     "som_Latn",
     "tum_Latn",
 ]
-_LANGUAGES_PAIRS = []
-
 _SPLIT = ["dev", "devtest"]
 
 
-def extend_lang_pairs():
+def extend_lang_pairs() -> dict[str, list[str]]:
     # add all possible language pairs
+    hf_lang_subset2isolang = {}
     for x in _LANGUAGES:
         if "-" not in x:
             for y in _LANGUAGES:
-                if "-" not in y:
-                    if x != y:
-                        pair = f"{x}-{y}"
-                        if pair not in _LANGUAGES:
-                            _LANGUAGES_PAIRS.append(pair)
+                if x != y:
+                    pair = f"{x}-{y}"
+                    hf_lang_subset2isolang[pair] = [
+                        x.replace("_", "-"),
+                        y.replace("_", "-"),
+                    ]
+    return hf_lang_subset2isolang
 
 
-extend_lang_pairs()
+_LANGUAGES_MAPPING = extend_lang_pairs()
 
 
-class FloresBitextMining(AbsTaskBitextMining, CrosslingualTask):
+class FloresBitextMining(AbsTaskBitextMining, MultilingualTask):
+    parallel_subsets = True
     metadata = TaskMetadata(
         name="FloresBitextMining",
-        hf_hub_name="facebook/flores",
+        dataset={
+            "path": "mteb/flores",
+            "revision": "e6b647fcb6299a2f686f742f4d4c023e553ea67e",
+            "trust_remote_code": True,
+        },
         description="FLORES is a benchmark dataset for machine translation between English and low-resource languages.",
         reference="https://huggingface.co/datasets/facebook/flores",
         type="BitextMining",
         category="s2s",
         eval_splits=_SPLIT,
-        eval_langs=_LANGUAGES_PAIRS,
+        eval_langs=_LANGUAGES_MAPPING,
         main_score="f1",
-        revision="80dc3040d19756742c9a18267ab30f54fb8e226b",
-        date=None,
-        form=None,
-        domains=None,
-        task_subtypes=None,
-        license=None,
-        socioeconomic_status=None,
-        annotations_creators=None,
-        dialect=None,
-        text_creation=None,
-        bibtex_citation=None,
+        date=("2022-01-01", "2022-12-31"),
+        form=["written"],
+        domains=["Non-fiction", "Encyclopaedic"],
+        task_subtypes=[],
+        license="CC BY-SA 4.0",
+        socioeconomic_status="mixed",
+        annotations_creators="human-annotated",
+        dialect=[],
+        text_creation="created",
+        bibtex_citation="""
+        @inproceedings{goyal2022flores,
+        title={The FLORES-101 Evaluation Benchmark for Low-Resource and Multilingual Machine Translation},
+        author={Goyal, Naman and Gao, Cynthia and Chaudhary, Vishrav and Chen, Peng-Jen and Wenzek, Guillaume and Ju, Da and Krishnan, Sanjana and Ranzato, Marc'Aurelio and Guzm{\'a}n, Francisco},
+        booktitle={Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+        pages={19--35},
+        year={2022}
+        }
+        """,
+        n_samples={"dev": 997, "devtest": 1012},
+        avg_character_length={},
     )
 
-    @property
-    def metadata_dict(self) -> dict[str, str]:
-        return dict(self.metadata)
-
-    def load_data(self, **kwargs):
-        """
-        Load dataset from HuggingFace hub
-        """
+    def load_data(self, **kwargs: Any) -> None:
+        """Load dataset from HuggingFace hub"""
         if self.data_loaded:
             return
-        self.dataset = {}
-        for lang in self.langs:
-            self.dataset[lang] = datasets.load_dataset(
-                self.metadata_dict["hf_hub_name"],
-                lang,
-                revision=self.metadata_dict.get("revision", None),
-            )
-        self.dataset_transform()
+        self.dataset = datasets.load_dataset(**self.metadata_dict["dataset"])
         self.data_loaded = True
-
-    def dataset_transform(self):
-        # Convert to standard format
-        for lang in self.langs:
-            lang1 = lang.split("-")[0]
-            lang2 = lang.split("-")[1]
-            for split in _SPLIT:
-                self.dataset[lang][split] = self.dataset[lang][split].rename_column(
-                    "sentence_" + lang1, "sentence1"
-                )
-                self.dataset[lang][split] = self.dataset[lang][split].rename_column(
-                    "sentence_" + lang2, "sentence2"
-                )

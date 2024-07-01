@@ -4,50 +4,58 @@ import datasets
 
 from mteb.abstasks.TaskMetadata import TaskMetadata
 
-from ....abstasks import AbsTaskBitextMining, CrosslingualTask
+from ....abstasks import AbsTaskBitextMining, MultilingualTask
 
 
-class DiaBLaBitextMining(AbsTaskBitextMining, CrosslingualTask):
+class DiaBLaBitextMining(AbsTaskBitextMining, MultilingualTask):
     metadata = TaskMetadata(
         name="DiaBlaBitextMining",
-        hf_hub_name="rbawden/DiaBLa",
+        dataset={
+            "path": "rbawden/DiaBLa",
+            "revision": "5345895c56a601afe1a98519ce3199be60a27dba",
+            "trust_remote_code": True,
+        },
         description="English-French Parallel Corpus. DiaBLa is an English-French dataset for the evaluation of Machine Translation (MT) for informal, written bilingual dialogue.",
         reference="https://inria.hal.science/hal-03021633",
         type="BitextMining",
         category="s2s",
         eval_splits=["test"],
-        eval_langs=["fr-en", "en-fr"],
+        eval_langs={
+            "fr-en": ["fra-Latn", "eng-Latn"],
+            "en-fr": ["eng-Latn", "fra-Latn"],
+        },
         main_score="f1",
-        revision="5345895c56a601afe1a98519ce3199be60a27dba",
-        date=None,
-        form=None,
-        domains=None,
-        task_subtypes=None,
-        license=None,
-        socioeconomic_status=None,
-        annotations_creators=None,
-        dialect=None,
-        text_creation=None,
-        bibtex_citation=None,
+        date=("2016-01-01", "2017-12-31"),
+        form=["written"],
+        domains=["Social"],
+        task_subtypes=[],
+        license="CC BY-NC-SA 4.0",
+        socioeconomic_status="mixed",
+        annotations_creators="human-annotated",
+        dialect=[],
+        text_creation="created",
+        bibtex_citation="""
+        @inproceedings{gonzalez2019diabla,
+        title={DiaBLa: A Corpus of Bilingual Spontaneous Written Dialogues for Machine Translation},
+        author={González, Matilde and García, Clara and Sánchez, Lucía},
+        booktitle={Proceedings of the 12th Language Resources and Evaluation Conference},
+        pages={4192--4198},
+        year={2019}
+        }
+        """,
+        n_samples={},
+        avg_character_length={},
     )
 
-    @property
-    def metadata_dict(self) -> dict[str, str]:
-        return dict(self.metadata)
-
     def load_data(self, **kwargs):
-        """
-        Load dataset from HuggingFace hub and convert it to the standard format.
-        """
+        """Load dataset from HuggingFace hub and convert it to the standard format."""
         if self.data_loaded:
             return
 
         self.dataset = {}
-        for lang in self.langs:
-            self.dataset[lang] = datasets.load_dataset(
-                self.metadata_dict["hf_hub_name"],
-                revision=self.metadata_dict.get("revision", None),
-            )
+
+        for lang in self.hf_subsets:
+            self.dataset[lang] = datasets.load_dataset(**self.metadata_dict["dataset"])
 
         self.dataset_transform()
         self.data_loaded = True
@@ -65,5 +73,5 @@ class DiaBLaBitextMining(AbsTaskBitextMining, CrosslingualTask):
             return row
 
         # Convert to standard format
-        for lang in self.langs:
+        for lang in self.hf_subsets:
             self.dataset[lang] = self.dataset[lang].map(create_columns)
